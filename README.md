@@ -20,6 +20,8 @@ El dataset presenta un **desbalanceo severo** (~95% reales / ~5% fraudulentas), 
 │   ├── fake_job_postings.csv          # Dataset original
 │   └── fake_job_postings_clean.csv    # Dataset tras limpieza de outliers
 ├── main.ipynb                         # Notebook principal (EDA + Modelado)
+├── catboost_info/
+│   ├── ...                            # Entrenamiento del modelo
 ├── View/
 │   └── dashboard.py                   # Visualización del dashboard
 │
@@ -118,8 +120,8 @@ Las métricas prioritarias dado el desbalanceo son **Recall** y **F1-Score** sob
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/tu-usuario/fake-job-postings.git
-cd fake-job-postings
+git clone https://github.com/Bootcamp-DA-P2/proyecto8-problemaclasificacion-grupo5.git
+
 
 # 2. Instalar dependencias
 pip install -r requirements.txt
@@ -128,7 +130,7 @@ pip install -r requirements.txt
 jupyter notebook main.ipynb
 
 # 4. Lanzar la aplicación
-streamlit run app/app.py
+streamlit run view/dashboard.py
 ```
 
 ---
