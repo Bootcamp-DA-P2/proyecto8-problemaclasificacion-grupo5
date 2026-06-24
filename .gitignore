@@ -228,3 +228,5 @@ output/
 //Ignorar DS
 
 .DS_Store
+
+catboost_info
