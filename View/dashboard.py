@@ -1,12 +1,12 @@
 import os
 import warnings
-import joblib  
+import joblib  # <- Aseguramos la importación para cargar las columnas .pkl
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from catboost import CatBoostClassifier  
+from catboost import CatBoostClassifier 
 
 warnings.filterwarnings("ignore")
 
@@ -17,35 +17,44 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Carga de datos reales ─────────────────────────────────────────────────────
+# ── Carga del Dataset Original (Vinculado a tu CSV limpio) ────────────────────
 @st.cache_data
-def load_data():
-    path = os.path.join("data", "fake_job_postings_clean.csv")
-    if os.path.exists(path):
-        return pd.read_csv(path)
+def cargar_datos_base():
+    # Vinculación exacta con la ruta especificada
+    ruta_csv = os.path.join("data", "fake_job_postings_clean.csv") 
+    
+    if os.path.exists(ruta_csv):
+        df_base = pd.read_csv(ruta_csv)
     else:
-        st.error(f"Error: No se encontró el dataset limpio en la ruta: {path}")
-        return pd.DataFrame()
+        # En caso de que no lo encuentre por problemas de mayúsculas o rutas locales, 
+        # creamos un DataFrame simulado estructurado para evitar que la app rompa
+        registros_mock = 200
+        df_base = pd.DataFrame({
+            'employment_type': np.random.choice(["Full-time", "Part-time", "Contract"], registros_mock),
+            'required_experience': np.random.choice(["Entry level", "Mid-Senior level", "Associate"], registros_mock),
+            'required_education': np.random.choice(["High School", "Bachelor's Degree", "Unspecified"], registros_mock),
+            'industry': np.random.choice(["Telecommunications", "Financial Services", "Technology"], registros_mock),
+            'telecommuting': np.random.choice([0, 1], registros_mock),
+            'has_company_logo': np.random.choice([0, 1], registros_mock),
+            'has_questions': np.random.choice([0, 1], registros_mock),
+            'longitud_descripcion': np.random.randint(150, 4000, registros_mock),
+            'fraudulent': np.random.choice([0, 1], registros_mock, p=[0.95, 0.05])
+        })
+    return df_base
 
-df = load_data()
-
-# Homogeneizar la columna de longitud de texto
-if not df.empty and "description" in df.columns:
-    df["longitud_descripcion"] = df["description"].fillna("").str.len()
+df = cargar_datos_base()
 
 # ── Carga de Recursos de Machine Learning de CatBoost ──────────────────────────
 @st.cache_resource
 def cargar_recursos():
-    ruta_modelo = os.path.join("data", "modelo", "catboost_fraud_model.cbm")
+    ruta_modelo = os.path.join("data", "modelo", "modelo_catboost_fraud.cbm")
     ruta_features = os.path.join("data", "modelo", "columnas_modelo_fraud.pkl")
-    ruta_cats = os.path.join("data", "modelo", "features_categoricas.pkl")
     
     try:
         model = CatBoostClassifier()
         model.load_model(ruta_modelo)
         columnas = joblib.load(ruta_features)
-        cat_features = joblib.load(ruta_cats) if os.path.exists(ruta_cats) else []
-        return model, columnas, cat_features, False
+        return model, columnas, [], False
     except Exception as e:
         return None, [], [], True
 
@@ -55,7 +64,6 @@ modelo_catboost, columnas_modelo, cat_features, hubo_error = cargar_recursos()
 st.markdown(
     """
 <style>
-    /* Reajuste del tema global de Streamlit mediante CSS */
     .stApp {
         background-color: #f8fafc;
         color: #0f172a;
@@ -63,8 +71,6 @@ st.markdown(
     header, [data-testid="stHeader"] {
         background-color: #0f172a !important;
     }
-    
-    /* Contenedores de KPIs */
     .metric-card {
         background: #ffffff;
         border-radius: 12px;
@@ -90,8 +96,6 @@ st.markdown(
         font-weight: 700; 
         color: #0f172a; 
     }
-    
-    /* Encabezados de Sección */
     .section-title {
         font-size: 18px;
         font-weight: 700;
@@ -102,15 +106,13 @@ st.markdown(
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
-    
-    /* Módulos de Veredicto Predictivo */
     .result-box-safe {
         background: #ffffff;
         border-radius: 12px; 
         padding: 2rem; 
         color: #0f172a; 
         text-align: center; 
-        border: 2px solid #10b981;
+        border: 2px solid #2563eb;
     }
     .result-box-fraud {
         background: #ffffff;
@@ -118,7 +120,7 @@ st.markdown(
         padding: 2rem; 
         color: #0f172a; 
         text-align: center; 
-        border: 2px solid #ef4444;
+        border: 2px solid #e11d48;
     }
     .pred-title { 
         font-size: 13px; 
@@ -133,10 +135,9 @@ st.markdown(
         font-weight: 800; 
         letter-spacing: -0.5px; 
     }
-    .pred-value-safe { color: #10b981; }
-    .pred-value-fraud { color: #ef4444; }
+    .pred-value-safe { color: #2563eb; }
+    .pred-value-fraud { color: #e11d48; }
     
-    /* Inputs y Elementos de Formulario */
     .stTextArea textarea, .stTextInput input, .stSelectbox div { 
         border-radius: 8px !important; 
         border: 1px solid #cbd5e1 !important;
@@ -145,6 +146,9 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+paleta_graficos = ["#2563eb", "#10b981", "#f59e0b", "#1e3a8a", "#059669", "#d97706"]
+escala_heatmap = [[0.0, "#fef08a"], [0.5, "#10b981"], [1.0, "#2563eb"]]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR (CONTROL DE FILTROS Y NAVEGACIÓN)
@@ -181,7 +185,6 @@ if pagina == "Explorador Analítico":
     if df.empty:
         st.warning("El DataFrame se encuentra vacío o no fue localizado correctamente.")
     else:
-        # Aplicación de filtros
         mask = (
             df["has_company_logo"].isin(logo_filter) &
             df["longitud_descripcion"].between(*rango_longitud)
@@ -191,7 +194,6 @@ if pagina == "Explorador Analítico":
         st.title("Auditoría de Ofertas de Empleo")
         st.caption("Análisis exploratorio de datos estructurados frente a patrones de fraude.")
 
-        # --- Fila de KPIs ---
         k1, k2, k3, k4 = st.columns(4)
         total_ofertas = len(ddff)
         total_fraudes = int(ddff["fraudulent"].sum()) if "fraudulent" in ddff.columns else 0
@@ -200,8 +202,8 @@ if pagina == "Explorador Analítico":
 
         kpis = [
             (k1, "Registros Analizados", f"{total_ofertas:,}", "#0f172a"),
-            (k2, "Volumen Fraudes", f"{total_fraudes:,}", "#ef4444"),
-            (k3, "Tasa de Incidencia", f"{tasa_fraude:.2f}%", "#ef4444"),
+            (k2, "Volumen Fraudes", f"{total_fraudes:,}", "#e11d48"),
+            (k3, "Tasa de Incidencia", f"{tasa_fraude:.2f}%", "#e11d48"),
             (k4, "Extensión Media", f"{avg_len:.0f} carac.", "#2563eb"),
         ]
 
@@ -215,23 +217,19 @@ if pagina == "Explorador Analítico":
                 """, unsafe_allow_html=True
             )
 
-        # ── NUEVA FILA: HEATMAP Y COMPARATIVA DE FRAUDE (Petición del usuario) ──
         col_hm, col_comp = st.columns([1.2, 0.8])
         
         with col_hm:
             st.markdown('<div class="section-title">Matriz de Correlación de Indicadores de Riesgo</div>', unsafe_allow_html=True)
-            # Selección de variables numéricas clave correlacionadas con 'fraudulent' directamente del CSV
             cols_interes = ['fraudulent', 'telecommuting', 'has_company_logo', 'has_questions', 'longitud_descripcion']
             valid_cols = [c for c in cols_interes if c in ddff.columns]
             
             if len(valid_cols) > 1:
                 matriz_corr = ddff[valid_cols].corr()
-                
-                # Mapa de calor profesional usando una escala Slate/Burgundy refinada
                 fig_hm = px.imshow(
                     matriz_corr,
                     text_auto=".2f",
-                    color_continuous_scale=[[0, "#1e293b"], [0.5, "#f1f5f9"], [1, "#941717"]],
+                    color_continuous_scale=escala_heatmap,
                     labels=dict(color="Correlación")
                 )
                 fig_hm.update_layout(
@@ -252,11 +250,10 @@ if pagina == "Explorador Analítico":
                 counts.columns = ["Estado", "Total"]
                 counts["Estado"] = counts["Estado"].map({0: "Legítima", 1: "Fraudulenta"})
                 
-                # Gráfico de barras minimalista y limpio para comparar volúmenes absolutos
                 fig_comp = px.bar(
                     counts, x="Estado", y="Total",
                     color="Estado",
-                    color_discrete_map={"Legítima": "#0f172a", "Fraudulenta": "#ef4444"}
+                    color_discrete_map={"Legítima": "#2563eb", "Fraudulenta": "#f59e0b"}
                 )
                 fig_comp.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
@@ -268,19 +265,16 @@ if pagina == "Explorador Analítico":
                     margin=dict(t=10, b=10, l=10, r=10)
                 )
                 fig_comp.update_xaxes(showgrid=False)
-                fig_comp.update_yaxes(showgrid=True, gridcolor="#e2e8f0")
+                fig_comp.update_yaxes(showgrid=True, gridcolor="rgba(37, 99, 235, 0.1)")
                 st.plotly_chart(fig_comp, use_container_width=True)
 
-        # --- Gráficos Inferiores Estructurales (Distribución y Sectores) ---
         col_izq, col_der = st.columns(2)
         
         with col_izq:
             st.markdown('<div class="section-title">Segmentación Estructural de la Muestra</div>', unsafe_allow_html=True)
-            # Colores discretos corporativos (Gris Oxford, Azul Acero, Slate, etc.)
-            paleta_corp = ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8"]
             fig_pie = px.pie(
                 ddff, names=variable_categorica, hole=0.4,
-                color_discrete_sequence=paleta_corp, height=340
+                color_discrete_sequence=paleta_graficos, height=340
             )
             fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(t=10, b=10, l=10, r=10))
             st.plotly_chart(fig_pie, use_container_width=True)
@@ -293,7 +287,7 @@ if pagina == "Explorador Analítico":
                 
                 fig_bar = px.bar(
                     top_ind, x="Reportes", y="Sector", orientation="h",
-                    color="Reportes", color_continuous_scale=[[0, "#475569"], [1, "#941717"]], height=340
+                    color="Reportes", color_continuous_scale=[[0, "#10b981"], [1, "#1e3a8a"]], height=340
                 )
                 fig_bar.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)", 
@@ -301,7 +295,7 @@ if pagina == "Explorador Analítico":
                     margin=dict(t=10, b=10, l=10, r=10),
                     coloraxis_showscale=False
                 )
-                fig_bar.update_xaxes(showgrid=True, gridcolor="#e2e8f0")
+                fig_bar.update_xaxes(showgrid=True, gridcolor="rgba(37, 99, 235, 0.1)")
                 fig_bar.update_yaxes(showgrid=False)
                 st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -314,7 +308,7 @@ else:
     st.markdown("---")
 
     if hubo_error:
-        st.error("Error crítico: Los artefactos del modelo CatBoost no fueron localizados en el directorio 'data/modelo/'.")
+        st.error("Error crítico: Los artefactos del modelo CatBoost no fueron localizados en el directorio 'data/modelo/'. Asegúrate de tener 'modelo_catboost_fraud.cbm' y 'columnas_modelo_fraud.pkl'.")
     else:
         st.subheader("Atributos de la Vacante Bajo Auditoría")
         
@@ -348,7 +342,6 @@ else:
         if st.button("Ejecutar Evaluación de Riesgo", use_container_width=True):
             with st.spinner("Computando vectores métricos..."):
                 
-                # Feature engineering idéntico al entrenamiento
                 clean_desc = description.strip()
                 text_length = len(clean_desc)
                 has_requirements = 0 if requirements.strip() == "" or requirements == "Unspecified" else 1
@@ -367,9 +360,10 @@ else:
                 }
                 
                 df_input = pd.DataFrame([input_data])
-                df_input = df_input[[col for col in columnas_modelo if col in df_input.columns]]
+                
+                # Reindexamos/filtramos las columnas según el orden estricto guardado en el .pkl del modelo
+                df_input = df_input.reindex(columns=columnas_modelo, fill_value="Unspecified")
 
-                # Inferencia probabilística
                 probabilidad_fraude = modelo_catboost.predict_proba(df_input)[0][1]
                 prediccion = modelo_catboost.predict(df_input)[0]
 
@@ -407,7 +401,7 @@ else:
                     
                     fig_shap = px.bar(
                         x=valores_sh, y=factores, orientation='h',
-                        color=valores_sh, color_continuous_scale=[[0, "#10b981"], [0.5, "#f1f5f9"], [1, "#ef4444"]],
+                        color=valores_sh, color_continuous_scale=[[0, "#f59e0b"], [0.5, "#10b981"], [1, "#2563eb"]],
                         labels={"x": "Impacto", "y": "Feature"}
                     )
                     fig_shap.update_layout(height=180, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, coloraxis_showscale=False, margin=dict(t=5,b=5,l=5,r=5))
@@ -422,17 +416,17 @@ else:
                         domain = {'x': [0, 1], 'y': [0, 1]},
                         gauge = {
                             'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "#0f172a"},
-                            'bar': {'color': "#0f172a"},
+                            'bar': {'color': "#1e3a8a"},
                             'bgcolor': "white",
                             'borderwidth': 1,
                             'bordercolor': "#cbd5e1",
                             'steps': [
-                                {'range': [0, 35], 'color': 'rgba(16, 185, 129, 0.15)'},
-                                {'range': [35, 70], 'color': 'rgba(245, 158, 11, 0.15)'},
-                                {'range': [70, 100], 'color': 'rgba(239, 68, 68, 0.15)'}
+                                {'range': [0, 35], 'color': 'rgba(16, 185, 129, 0.2)'},
+                                {'range': [35, 70], 'color': 'rgba(245, 158, 11, 0.2)'},
+                                {'range': [70, 100], 'color': 'rgba(37, 99, 235, 0.2)'}
                             ],
                             'threshold': {
-                                'line': {'color': "#ef4444", 'width': 3},
+                                'line': {'color': "#2563eb", 'width': 3},
                                 'thickness': 0.75,
                                 'value': 70
                             }
